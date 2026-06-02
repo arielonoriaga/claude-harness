@@ -10,8 +10,9 @@
 
 use std::{
     env, fs,
+    io::Write,
     path::PathBuf,
-    process::Command,
+    process::{Command, Stdio},
     sync::mpsc,
     thread,
     time::Duration,
@@ -94,6 +95,8 @@ struct App {
     quit: bool,
     // set by the 'work' key: id to hand off to Claude (printed to stdout on exit).
     work_id: Option<String>,
+    // whether the work-key managed to copy a build prompt to the clipboard.
+    work_copied: bool,
 }
 
 const SPIN: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -107,6 +110,53 @@ fn read_proposals(path: &PathBuf) -> Vec<Proposal> {
         .ok()
         .and_then(|s| serde_json::from_str::<Vec<Proposal>>(&s).ok())
         .unwrap_or_default()
+}
+
+/// A ready-to-paste prompt that tells Claude to implement a proposal.
+fn build_work_payload(p: &Proposal) -> String {
+    format!(
+        "Implement this harness improvement proposal, then run `queue.sh apply {id}`.\n\n\
+         id: {id}\ntitle: {title}\ntarget: {target}\nrisk: {risk}\n\n\
+         why (signal):\n{signal}\n\nproposal:\n{proposal}\n\nsnippet:\n{snippet}",
+        id = p.id,
+        title = p.title,
+        target = p.target,
+        risk = p.risk,
+        signal = p.signal,
+        proposal = p.proposal,
+        snippet = p.snippet,
+    )
+}
+
+/// Best-effort copy to the system clipboard. Tries common tools in order and
+/// returns true on the first that accepts the text. Never blocks the UI.
+fn copy_clipboard(text: &str) -> bool {
+    let tools: [(&str, &[&str]); 5] = [
+        ("wl-copy", &[]),
+        ("xclip", &["-selection", "clipboard"]),
+        ("xsel", &["-b", "-i"]),
+        ("pbcopy", &[]),
+        ("clip.exe", &[]),
+    ];
+    for (cmd, args) in tools {
+        let Ok(mut child) = Command::new(cmd)
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+        else {
+            continue;
+        };
+        if let Some(mut stdin) = child.stdin.take() {
+            let _ = stdin.write_all(text.as_bytes());
+            // drop stdin to signal EOF before waiting
+        }
+        if child.wait().map(|s| s.success()).unwrap_or(false) {
+            return true;
+        }
+    }
+    false
 }
 
 fn risk_color(r: &str) -> Color {
@@ -154,6 +204,7 @@ impl App {
             iterate_rx: None,
             quit: false,
             work_id: None,
+            work_copied: false,
         };
         app.reload();
         app
@@ -252,6 +303,7 @@ impl App {
             return;
         };
         let _ = self.run_queue(&["accept", &p.id]);
+        self.work_copied = copy_clipboard(&build_work_payload(&p));
         self.work_id = Some(p.id);
         self.quit = true;
     }
@@ -500,7 +552,12 @@ fn main() -> std::io::Result<()> {
             Ok(detail) => println!("{detail}"),
             Err(e) => println!("(could not load detail: {e})"),
         }
-        println!("\n→ Claude: implement this proposal, then run: queue.sh apply {id}");
+        if app.work_copied {
+            println!("\n✓ build prompt copied to clipboard — paste into Claude Code,");
+            println!("  or just run /work there to build all accepted proposals.");
+        } else {
+            println!("\n→ In Claude Code run /work to build accepted proposals (then queue.sh apply {id}).");
+        }
     }
     res
 }
@@ -539,6 +596,7 @@ mod tests {
             iterate_rx: None,
             quit: false,
             work_id: None,
+            work_copied: false,
         }
     }
 
@@ -824,6 +882,16 @@ mod tests {
         app.start_work();
         assert_eq!(app.work_id.as_deref(), Some("p2"));
         assert!(app.quit);
+    }
+
+    #[test]
+    fn build_work_payload_includes_key_fields() {
+        let p = proposal("fix-x", "high", "pending");
+        let out = build_work_payload(&p);
+        assert!(out.contains("queue.sh apply fix-x"));
+        assert!(out.contains("id: fix-x"));
+        assert!(out.contains("Title fix-x"));
+        assert!(out.contains("Implement this harness improvement"));
     }
 
     #[test]

@@ -67,8 +67,15 @@ bash hooks/improve/queue.sh browse   # ratatui TUI
 ```
 
 Keys: `Tab` switch · `j/k` move · `J/K` scroll · `a` accept · `d` deny · `i` iterate
-(refine the proposal text via the reflector) · `x` apply · `w`/`Enter` **work** (accept
-+ hand the proposal to Claude to implement) · `q` quit.
+(refine the proposal text via the reflector) · `x` apply · `w`/`Enter` **work** · `q` quit.
+
+`w` (work) accepts the proposal and copies a ready-to-paste build prompt to your clipboard
+(`wl-copy`/`xclip`/`pbcopy`). Two ways to hand it to Claude:
+
+- **Separate terminal:** press `w`, then in Claude Code either paste the clipboard, or run
+  `/work` — which builds every `accepted` proposal in turn and retires each with `queue.sh apply`.
+- **Inside Claude Code** (`!bash hooks/improve/queue.sh browse`): `w` also prints the proposal to
+  stdout, which lands directly in the conversation.
 
 ## Tests
 
