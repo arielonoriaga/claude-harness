@@ -57,6 +57,7 @@ Set these in your `settings.json` `"env"` block or your shell:
 | `GUARDRAIL_WORK_NAME` / `GUARDRAIL_WORK_EMAIL` | Identity expected under that prefix. |
 | `GUARDRAIL_PERSONAL_NAME` / `GUARDRAIL_PERSONAL_EMAIL` | Identity expected everywhere else. |
 | `CLAUDE_HOME` | Config dir the guardrail protects from destructive ops (default `~/.claude`). |
+| `HARNESS_EDIT_OK=1` | Opt-in: relaxes *only* the protected-harness-file ask, for deliberate harness-maintenance sessions. Scoped to that one check (never a blanket allow); unset by default. |
 
 ## Triage proposals
 

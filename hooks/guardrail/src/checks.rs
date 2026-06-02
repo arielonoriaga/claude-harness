@@ -36,6 +36,9 @@ pub struct Ctx {
     pub uncommitted: Option<bool>,
     pub expected: Identity,
     pub config_root: String,
+    /// HARNESS_EDIT_OK=1 in env — relaxes ONLY the protected-harness-file ask
+    /// (scoped inside check_paths), for deliberate harness-maintenance sessions.
+    pub harness_edit_ok: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -390,6 +393,12 @@ pub fn check_paths(path: &str, ctx: &Ctx) -> Tier {
     ];
     let dirs = [format!("{}hooks/", root), format!("{}rules/", root)];
     if exact.iter().any(|e| e == path) || dirs.iter().any(|d| path.starts_with(d.as_str())) {
+        // Opt-in bypass for deliberate harness-maintenance sessions. Scoped to
+        // this protected-harness branch only — never a blanket allow — so the
+        // env var can't silently disable any future non-harness path checks.
+        if ctx.harness_edit_ok {
+            return Tier::Ok;
+        }
         return Tier::Borderline(format!(
             "edit to protected harness file: {}. Confirm intent.",
             path
@@ -461,6 +470,7 @@ mod tests {
                 email: "me@example.com".into(),
             },
             config_root: "/home/me/.claude/".into(),
+            harness_edit_ok: false,
         }
     }
 
@@ -785,6 +795,22 @@ mod tests {
             check_paths("/home/me/.claude/rules/root-cause.md", &ctx()),
             Tier::Borderline(_)
         ));
+    }
+
+    #[test]
+    fn harness_edit_ok_bypasses_protected_paths() {
+        let mut c = ctx();
+        c.harness_edit_ok = true;
+        assert_eq!(check_paths("/home/me/.claude/settings.json", &c), Tier::Ok);
+        assert_eq!(check_paths("/home/me/.claude/hooks/guardrail/src/main.rs", &c), Tier::Ok);
+        assert_eq!(check_paths("/home/me/.claude/CLAUDE.md", &c), Tier::Ok);
+    }
+
+    #[test]
+    fn harness_edit_ok_does_not_widen_to_nonharness() {
+        let mut c = ctx();
+        c.harness_edit_ok = true;
+        assert_eq!(check_paths("/home/me/project/foo.ts", &c), Tier::Ok);
     }
 
     #[test]

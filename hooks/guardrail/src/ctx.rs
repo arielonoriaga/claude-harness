@@ -103,6 +103,7 @@ pub fn build(cwd: &str) -> Ctx {
         uncommitted: uncommitted(cwd),
         expected: expected_for(cwd),
         config_root: config_root(),
+        harness_edit_ok: env::var("HARNESS_EDIT_OK").as_deref() == Ok("1"),
     }
 }
 
