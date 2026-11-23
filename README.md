@@ -1,3 +1,6 @@
+> [!WARNING]
+> **Archived.** This repository is no longer maintained.
+
 # claude-harness
 
 A self-built agent harness for [Claude Code](https://claude.com/claude-code) — the
